@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+</head>
+<body>
+  <div class="orb"></div>
+  <header class="hero">
+    <div>
+      <p class="label">Early Warning Platform</p>
+      <h1>{{ title }}</h1>
+      <p class="tagline">{{ tagline }}</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Current risk estimate</p>
+      <p class="stat-value">{{ '%.1f'|format(score) if score is not none else '—' }}</p>
+      <p class="stat-sub">Score from 0 to 100</p>
+      <p class="stat-interval">
+        {% if interval %}
+          {{ '%.1f'|format(interval[0]) }} to {{ '%.1f'|format(interval[1]) }} expected range
+        {% else %}
+          Prediction interval unavailable
+        {% endif %}
+      </p>
+    </div>
+  </header>
+  <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">
+    <span>Theme</span>
+  </button>
+
+  <section class="grid">
+    <form class="panel" method="post">
+      <h2>Score a location</h2>
+      <p class="panel-copy">Predict waterborne disease risk using satellite proxies, climate signals, and local exposure context.</p>
+
+      <label>
+        Latitude
+        <input type="number" step="0.0001" name="lat" value="{{ lat }}" required />
+      </label>
+      <label>
+        Longitude
+        <input type="number" step="0.0001" name="lon" value="{{ lon }}" required />
+      </label>
+      <label>
+        Date
+        <input type="date" name="date" value="{{ date }}" required />
+      </label>
+      <label>
+        Alert threshold
+        <input type="number" step="1" min="0" max="100" name="threshold" value="{{ threshold }}" />
+      </label>
+      <button type="submit">Generate Risk Score</button>
+
+      <div class="signals">
+        <div>
+          <p class="signal-value">Satellite</p>
+          <p class="signal-label">SST, chlorophyll, flooding</p>
+        </div>
+        <div>
+          <p class="signal-value">Climate</p>
+          <p class="signal-label">Precipitation, drought</p>
+        </div>
+        <div>
+          <p class="signal-value">Community</p>
+          <p class="signal-label">Access, sanitation, mobility</p>
+        </div>
+      </div>
+    </form>
+
+    <div class="panel map">
+      <div class="map-header">
+        <div>
+          <h2>Risk map overview</h2>
+          <p class="panel-copy">Slide through time, toggle layers, and export data for field teams.</p>
+        </div>
+        <div class="export">
+          <a href="/api/export/csv" class="ghost">Export CSV</a>
+          <a href="/api/export/pdf" class="ghost">Export PDF</a>
+        </div>
+      </div>
+
+      <div class="map-toolbar">
+        <div>
+          <label class="toolbar-label">Date</label>
+          <input id="timeSlider" type="range" min="0" max="0" value="0" />
+          <span id="timeLabel">--</span>
+        </div>
+        <div>
+          <label class="toolbar-label">Alert threshold</label>
+          <input id="thresholdSlider" type="range" min="0" max="100" value="{{ threshold }}" />
+          <span id="thresholdLabel">{{ threshold }}</span>
+        </div>
+        <div class="alert-box">
+          <p class="alert-title">Alerts</p>
+          <p id="alertCount">0 hotspots</p>
+        </div>
+      </div>
+
+      <div id="map"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Prototype pipeline: synthetic data, ensemble selection, GIS visualization. Built for rapid field testing.</p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+  <script>
+    const themeToggle = document.getElementById('themeToggle');
+    const rootEl = document.documentElement;
+    const storedTheme = localStorage.getItem('theme');
+    if (storedTheme) {
+      rootEl.dataset.theme = storedTheme;
+    }
+    themeToggle.addEventListener('click', () => {
+      const next = rootEl.dataset.theme === 'dark' ? 'light' : 'dark';
+      rootEl.dataset.theme = next;
+      localStorage.setItem('theme', next);
+    });
+
+    const map = L.map('map', { scrollWheelZoom: false });
+    const baseLayers = {
+      "Light": L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }),
+      "Streets": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }),
+      "Satellite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19 })
+    };
+    baseLayers.Light.addTo(map);
+
+    const markerLayer = L.layerGroup().addTo(map);
+    const heatLayer = L.heatLayer([], { radius: 18, blur: 20, maxZoom: 6 });
+    const overlays = { "Hotspots": markerLayer, "Heat": heatLayer };
+    L.control.layers(baseLayers, overlays).addTo(map);
+
+    const timeSlider = document.getElementById('timeSlider');
+    const timeLabel = document.getElementById('timeLabel');
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdLabel = document.getElementById('thresholdLabel');
+    const alertCount = document.getElementById('alertCount');
+
+    let points = [];
+    let dates = [];
+
+    function setMapView() {
+      if (points.length === 0) {
+        map.setView([0.5, 32.5], 4);
+        return;
+      }
+      const lat = points.reduce((sum, p) => sum + p.lat, 0) / points.length;
+      const lon = points.reduce((sum, p) => sum + p.lon, 0) / points.length;
+      map.setView([lat, lon], 5);
+    }
+
+    function render() {
+      const date = dates[parseInt(timeSlider.value, 10)] || null;
+      const threshold = parseFloat(thresholdSlider.value);
+      thresholdLabel.textContent = threshold.toFixed(0);
+      timeLabel.textContent = date || '--';
+
+      markerLayer.clearLayers();
+      heatLayer.setLatLngs([]);
+
+      let alertTotal = 0;
+      const heatPoints = [];
+
+      points.filter(p => !date || p.date === date).forEach(p => {
+        const isAlert = p.risk_score >= threshold;
+        if (isAlert) {
+          alertTotal += 1;
+        }
+        const color = isAlert ? '#d1495b' : p.risk_score >= 40 ? '#f4b860' : '#2d7d7d';
+        const marker = L.circleMarker([p.lat, p.lon], {
+          radius: isAlert ? 7 : 5,
+          color,
+          fillColor: color,
+          fillOpacity: 0.8,
+        }).bindPopup(`Risk: ${p.risk_score.toFixed(1)}<br/>${p.date}`);
+        markerLayer.addLayer(marker);
+        heatPoints.push([p.lat, p.lon, p.risk_score / 100]);
+      });
+
+      heatLayer.setLatLngs(heatPoints);
+      alertCount.textContent = `${alertTotal} hotspots`;
+    }
+
+    function initControls() {
+      timeSlider.addEventListener('input', render);
+      thresholdSlider.addEventListener('input', render);
+    }
+
+    fetch('/api/points?limit=1500')
+      .then(resp => resp.json())
+      .then(data => {
+        points = data.map(row => ({
+          lat: parseFloat(row.lat),
+          lon: parseFloat(row.lon),
+          date: row.date,
+          risk_score: parseFloat(row.risk_score)
+        }));
+        dates = Array.from(new Set(points.map(p => p.date))).sort();
+        timeSlider.max = Math.max(dates.length - 1, 0);
+        timeSlider.value = dates.length ? dates.length - 1 : 0;
+        setMapView();
+        initControls();
+        render();
+      })
+      .catch(() => {
+        setMapView();
+      });
+  </script>
+</body>
+</html>

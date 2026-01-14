@@ -1,0 +1,11 @@
+folium
+geopandas
+joblib
+matplotlib
+numpy
+pandas
+scikit-learn
+tqdm
+flask
+gunicorn
+xgboost

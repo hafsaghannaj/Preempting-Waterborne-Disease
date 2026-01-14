@@ -1,0 +1,9 @@
+version: "3.9"
+
+services:
+  outbreaks-web:
+    build: .
+    ports:
+      - "8001:8000"
+    environment:
+      - PYTHONUNBUFFERED=1

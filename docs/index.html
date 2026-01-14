@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Outbreaks</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@400;600;700&family=Space+Grotesk:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="orb"></div>
+  <header class="hero">
+    <div>
+      <p class="label">Early Warning Platform</p>
+      <h1>Outbreaks</h1>
+      <p class="tagline">Preempting Waterborne Disease Outbreaks with AI and Satellite Data</p>
+    </div>
+    <div class="stat">
+      <p class="stat-label">Current risk estimate</p>
+      <p class="stat-value" id="scoreValue">—</p>
+      <p class="stat-sub">Score from 0 to 100</p>
+      <p class="stat-interval" id="intervalValue">Prediction interval unavailable</p>
+    </div>
+  </header>
+  <button id="themeToggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">
+    <span>Theme</span>
+  </button>
+
+  <section class="grid">
+    <div class="panel">
+      <h2>Score a location</h2>
+      <p class="panel-copy">Predict waterborne disease risk using satellite proxies, climate signals, and local exposure context.</p>
+
+      <label>
+        Latitude
+        <input id="latInput" type="number" step="0.0001" value="0.5" required />
+      </label>
+      <label>
+        Longitude
+        <input id="lonInput" type="number" step="0.0001" value="32.5" required />
+      </label>
+      <label>
+        Date
+        <input id="dateInput" type="date" required />
+      </label>
+      <label>
+        Alert threshold
+        <input id="thresholdInput" type="number" step="1" min="0" max="100" value="70" />
+      </label>
+      <button id="scoreButton" type="button">Estimate Risk (static demo)</button>
+
+      <div class="signals">
+        <div>
+          <p class="signal-value">Satellite</p>
+          <p class="signal-label">SST, chlorophyll, flooding</p>
+        </div>
+        <div>
+          <p class="signal-value">Climate</p>
+          <p class="signal-label">Precipitation, drought</p>
+        </div>
+        <div>
+          <p class="signal-value">Community</p>
+          <p class="signal-label">Access, sanitation, mobility</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel map">
+      <div class="map-header">
+        <div>
+          <h2>Risk map overview</h2>
+          <p class="panel-copy">Slide through time, toggle layers, and export data for field teams.</p>
+        </div>
+        <div class="export">
+          <a href="data/risk_scored_points.csv" class="ghost">Export CSV</a>
+          <span class="ghost muted" title="PDF export requires the server version">Export PDF</span>
+        </div>
+      </div>
+
+      <div class="map-toolbar">
+        <div>
+          <label class="toolbar-label">Date</label>
+          <input id="timeSlider" type="range" min="0" max="0" value="0" />
+          <span id="timeLabel">--</span>
+        </div>
+        <div>
+          <label class="toolbar-label">Alert threshold</label>
+          <input id="thresholdSlider" type="range" min="0" max="100" value="70" />
+          <span id="thresholdLabel">70</span>
+        </div>
+        <div class="alert-box">
+          <p class="alert-title">Alerts</p>
+          <p id="alertCount">0 hotspots</p>
+        </div>
+      </div>
+
+      <div id="map"></div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Static demo on GitHub Pages. For live scoring, run the Flask webapp locally.</p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
